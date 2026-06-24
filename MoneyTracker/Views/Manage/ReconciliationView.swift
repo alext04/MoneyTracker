@@ -10,17 +10,37 @@ struct ReconciliationView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
+    // 1. We now fetch Accounts AND Transactions to do the math
     @Query(filter: #Predicate<Account> { $0.isActive }) private var accounts: [Account]
+    @Query private var transactions: [Transaction]
     
     @State private var selectedAccount: Account?
     @State private var actualBalanceString: String = ""
     @State private var showingSuccess = false
     
-    // Calculate the mathematical drift
+    // 2. Dynamically calculate the balance on the fly
+    private var currentBalance: Double {
+        guard let account = selectedAccount else { return 0.0 }
+        
+        // Filter transactions to only this specific account
+        let accountTxns = transactions.filter { $0.account == account }
+        
+        // Sum them up based on income vs expense
+        return accountTxns.reduce(0.0) { total, txn in
+            if txn.type == "income" {
+                return total + txn.amount
+            } else if txn.type == "expense" {
+                return total - txn.amount
+            }
+            // Add transfer logic here if needed later
+            return total
+        }
+    }
+    
+    // Calculate the mathematical drift using our new dynamic balance
     var discrepancy: Double {
         let actual = Double(actualBalanceString) ?? 0.0
-        let current = selectedAccount?.balance ?? 0.0
-        return actual - current
+        return actual - currentBalance
     }
     
     var body: some View {
@@ -33,12 +53,12 @@ struct ReconciliationView: View {
                     }
                 }
                 
-                if let account = selectedAccount {
+                if selectedAccount != nil {
                     HStack {
                         Text("Ledger Balance:")
                         Spacer()
-                        // Enforces Western 100,000 format with INR
-                        Text(account.balance, format: .currency(code: "INR").locale(Locale(identifier: "en_US")))
+                        // Uses our new dynamic currentBalance
+                        Text(currentBalance, format: .currency(code: "INR").locale(Locale(identifier: "en_US")))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -54,7 +74,7 @@ struct ReconciliationView: View {
                             Text("Discrepancy:")
                             Spacer()
                             Text(discrepancy > 0 ? "+\(discrepancy, format: .currency(code: "INR").locale(Locale(identifier: "en_US")))" : "\(discrepancy, format: .currency(code: "INR").locale(Locale(identifier: "en_US")))")
-                                .foregroundStyle(discrepancy == 0 ? .green : (discrepancy > 0 ? .mint : .red))
+                                .foregroundStyle(discrepancy == 0 ? Color.green : (discrepancy > 0 ? Color.mint : Color.red))
                                 .fontWeight(.semibold)
                         }
                         .font(.subheadline)
@@ -66,14 +86,14 @@ struct ReconciliationView: View {
                         Button("Sync & Create Adjustment") {
                             createAdjustmentTransaction(for: account)
                         }
-                        .foregroundStyle(.accent)
+                        .foregroundStyle(Color.accentColor)
                     } footer: {
-                        Text("This will create a new transaction named 'Reconciliation Adjustment' to fix the \(discrepancy > 0 ? "missing" : "excess") funds and match your actual bank balance.")
+                        Text("This will create a new transaction named 'Reconciliation' to fix the \(discrepancy > 0 ? "missing" : "excess") funds and match your actual bank balance.")
                     }
                 } else if !actualBalanceString.isEmpty {
                     Section {
                         Text("Your account is perfectly balanced! 🎉")
-                            .foregroundStyle(.green)
+                            .foregroundStyle(Color.green)
                             .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
@@ -89,25 +109,18 @@ struct ReconciliationView: View {
     }
     
     private func createAdjustmentTransaction(for account: Account) {
-        let actual = Double(actualBalanceString) ?? 0.0
-        
-        // 1. Create the ghost transaction
+        // 3. Updated initializer to match your specific SwiftData model
         let adjustment = Transaction(
-            name: "Reconciliation Adjustment",
             amount: abs(discrepancy),
-            type: discrepancy > 0 ? "income" : "expense",
+            name: "Reconciliation",
             timestamp: Date(),
-            note: "System generated to sync balance to \(actual)"
+            type: discrepancy > 0 ? "income" : "expense",
+            account: account, // Passed directly in init
+            category: nil     // Passed directly in init (assumes your model allows nil)
         )
         
-        // 2. Link it
-        adjustment.account = account
         modelContext.insert(adjustment)
         
-        // 3. Force the balance update
-        account.balance = actual
-        
-        // 4. Trigger success
         let impact = UINotificationFeedbackGenerator()
         impact.notificationOccurred(.success)
         showingSuccess = true

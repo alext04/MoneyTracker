@@ -2,6 +2,14 @@
 //  BudgetPreferencesView.swift
 //  MoneyTracker
 //
+//  Created by Alex Thuruthel on 23/06/26.
+//
+
+
+//
+//  BudgetPreferencesView.swift
+//  MoneyTracker
+//
 
 import SwiftUI
 
@@ -25,7 +33,7 @@ struct BudgetPreferencesView: View {
                         Spacer()
                         Text("\(total)%")
                             .font(.headline)
-                            .foregroundStyle(isBalanced ? .primary : .red)
+                            .foregroundStyle(isBalanced ? Color.primary : Color.red)
                     }
                     
                     // Dynamic Stacked Bar
@@ -52,7 +60,7 @@ struct BudgetPreferencesView: View {
             }
             
             // Interactive Steppers
-            Section(footer: Text(isBalanced ? "Your budget is perfectly balanced at 100%." : "Your total allocation must equal exactly 100%. Please adjust.").foregroundStyle(isBalanced ? .secondary : .red)) {
+            Section(footer: Text(isBalanced ? "Your budget is perfectly balanced at 100%." : "Your total allocation must equal exactly 100%. Please adjust.").foregroundStyle(isBalanced ? Color.secondary : Color.red)) {
                 
                 Stepper(value: $needsTarget, in: 0...100, step: 5) {
                     HStack {
@@ -92,7 +100,7 @@ struct BudgetPreferencesView: View {
                             savingsTarget = 20
                         }
                     }
-                    .foregroundStyle(.accent)
+                    .foregroundStyle(Color.accentColor)
                 }
             }
         }
