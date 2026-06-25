@@ -129,6 +129,7 @@ struct RootTabView: View {
             }
         } else {
             // No biometrics or passcode enrolled, fail open (or you could prompt an alert)
+            // TO DO : Potential Securiy issue
             isUnlocked = true
         }
     }

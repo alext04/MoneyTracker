@@ -53,20 +53,27 @@ struct DashboardView: View {
     }
     
     var body: some View {
-        NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 32) {
+            NavigationStack {
+                VStack(spacing: 0) {
+                    
+                    // 1. STICKY HEADER: Moved outside the ScrollView so it never moves
                     headerSection
-                    jarPacingSection
-                    liquiditySection
-                    recentTransactionsSection
+                        .padding(.bottom, 16) // Adds a little breathing room before the scrollable content starts
+                    
+                    // 2. SCROLLABLE CONTENT: Everything else scrolls beneath the header
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 32) {
+                            jarPacingSection
+                            liquiditySection
+                            recentTransactionsSection
+                        }
+                        .padding(.bottom, 32) // Pads the bottom so content isn't cut off by the tab bar
+                    }
                 }
-                .padding(.vertical)
+                .navigationBarHidden(true)
+                .background(Color(uiColor: .systemGroupedBackground))
             }
-            .navigationBarHidden(true)
-            .background(Color(uiColor: .systemGroupedBackground))
         }
-    }
     
     // MARK: - UI Components
     

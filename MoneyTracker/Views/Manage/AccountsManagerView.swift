@@ -38,8 +38,7 @@ struct AccountsManagerView: View {
                                     .font(.body)
                                     .foregroundStyle(.primary)
                                 
-                                // NEW: Due Date UI for Credit Cards
-                                // NEW: Due Date UI for Credit Cards
+                                // Due Date UI for Credit Cards
                                 if isCredit, let dueDate = account.dueDate {
                                     Text("•")
                                         .font(.caption)

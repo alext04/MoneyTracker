@@ -79,7 +79,7 @@ struct LedgerView: View {
                             ForEach(groupedTransactions, id: \.0) { date, dayTransactions in
                                 Section(header: dateHeader(for: date)) {
                                     
-                                    // The White Card containing the rows
+                                    // The Card containing the rows
                                     VStack(spacing: 0) {
                                         ForEach(dayTransactions) { transaction in
                                             
@@ -105,7 +105,8 @@ struct LedgerView: View {
                                             }
                                         }
                                     }
-                                    .background(Color(uiColor: .systemBackground))
+                                    // FIX: Swapped .systemBackground to .secondarySystemGroupedBackground to restore Dark Mode contrast
+                                    .background(Color(uiColor: .secondarySystemGroupedBackground))
                                     .clipShape(RoundedRectangle(cornerRadius: 16))
                                     .padding(.horizontal)
                                 }

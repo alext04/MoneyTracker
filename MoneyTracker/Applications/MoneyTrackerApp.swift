@@ -11,7 +11,7 @@ struct MoneyTrackerApp: App {
     var body: some Scene {
         WindowGroup {
             RootTabView()
-                .tint(Color(hex: "4B5563")) // Your Slate Accent
+                .tint(Color(hex: "4B5563")) // Slate Accent
         }
         .modelContainer(for: [
             Account.self,
