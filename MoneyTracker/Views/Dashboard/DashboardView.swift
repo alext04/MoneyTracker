@@ -12,12 +12,12 @@ struct DashboardView: View {
     @Query(filter: #Predicate<Account> { $0.isActive }, sort: \Account.name) private var accounts: [Account]
     @Query(sort: \Transaction.timestamp, order: .reverse) private var allTransactions: [Transaction]
     
-    // 2. Fetch Absolute Budget Targets
+    // Absolute Budget Targets
     @AppStorage("targetNeeds") private var targetNeeds: Double = 25000.0
     @AppStorage("targetWants") private var targetWants: Double = 15000.0
     @AppStorage("targetSavings") private var targetSavings: Double = 10000.0
-
-    // MARK: - Dynamic Computations (Upgraded for Refunds & Transfers)
+    
+    // MARK: - Dynamic Computations
     
     private var currentMonthTransactions: [Transaction] {
         let currentMonth = Calendar.current.component(.month, from: Date())
@@ -28,15 +28,6 @@ struct DashboardView: View {
             let txnYear = Calendar.current.component(.year, from: txn.timestamp)
             return txnMonth == currentMonth && txnYear == currentYear
         }
-    }
-    
-    private var totalIncome: Double {
-        currentMonthTransactions.filter {
-            $0.type == "income" &&
-            $0.category?.masterBucket != "need" &&
-            $0.category?.masterBucket != "want" &&
-            $0.category?.masterBucket != "saving"
-        }.reduce(0) { $0 + $1.amount }
     }
     
     private var spentNeeds: Double {
@@ -52,23 +43,26 @@ struct DashboardView: View {
     }
     
     private var actualSavings: Double {
-        let grossSavings = currentMonthTransactions.filter { $0.category?.masterBucket == "saving" && $0.type != "income" }.reduce(0) { $0 + $1.amount }
-        let pulledFromSavings = currentMonthTransactions.filter { $0.category?.masterBucket == "saving" && $0.type == "income" }.reduce(0) { $0 + $1.amount }
+        let grossSavings = currentMonthTransactions.filter { $0.category?.masterBucket == "saving" && $0.type != "expense" }.reduce(0) { $0 + $1.amount }
+        let pulledFromSavings = currentMonthTransactions.filter { $0.category?.masterBucket == "saving" && $0.type == "expense" }.reduce(0) { $0 + $1.amount }
         return max(0, grossSavings - pulledFromSavings)
+    }
+    
+    private var totalSpend: Double {
+        spentNeeds + spentWants + actualSavings
     }
     
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 24) {
+                VStack(spacing: 32) {
                     headerSection
-                    macroPacingSection
+                    jarPacingSection
                     liquiditySection
                     recentTransactionsSection
                 }
                 .padding(.vertical)
             }
-            .navigationTitle("Overview")
             .navigationBarHidden(true)
             .background(Color(uiColor: .systemGroupedBackground))
         }
@@ -80,51 +74,41 @@ struct DashboardView: View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(Date(), format: .dateTime.month(.wide).year())
-                    .font(.title2)
+                    .font(.largeTitle)
                     .fontWeight(.bold)
-                Text("Monthly Pacing")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary)
+                    .textCase(.uppercase)
+                
+                // Removed subtitle and stripped decimals for minimal aesthetic
+                Text(floor(totalSpend), format: .currency(code: "INR").precision(.fractionLength(0)).locale(Locale(identifier: "en_US")))
+                    .font(.system(size: 44, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
             }
             Spacer()
         }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+    }
+    
+    private var jarPacingSection: some View {
+        HStack(spacing: 16) {
+            VerticalJarCard(title: "Needs", spent: spentNeeds, allocated: targetNeeds, bucket: "need")
+            VerticalJarCard(title: "Wants", spent: spentWants, allocated: targetWants, bucket: "want")
+            VerticalJarCard(title: "Savings", spent: actualSavings, allocated: targetSavings, bucket: "saving")
+        }
+        .padding(.vertical, 24)
+        .padding(.horizontal, 16)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .padding(.horizontal)
     }
     
-    private var macroPacingSection: some View {
-            VStack(spacing: 12) {
-                // Needs & Wants side-by-side
-                HStack(spacing: 12) {
-                    PacingCard(
-                        title: "Needs",
-                        spent: spentNeeds,
-                        allocated: targetNeeds, // Fed directly from AppStorage
-                        bucket: "need"
-                    )
-                    
-                    PacingCard(
-                        title: "Wants",
-                        spent: spentWants,
-                        allocated: targetWants, // Fed directly from AppStorage
-                        bucket: "want"
-                    )
-                }
-                
-                // Savings full width
-                PacingCard(
-                    title: "Savings",
-                    spent: actualSavings,
-                    allocated: targetSavings, // Fed directly from AppStorage
-                    bucket: "saving"
-                )
-            }
-            .padding(.horizontal)
-        }
     private var liquiditySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Live Liquidity")
+            Text("Accounts")
                 .font(.headline)
-                .padding(.horizontal)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 24)
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
@@ -132,7 +116,7 @@ struct DashboardView: View {
                         Text("No active accounts.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                            .padding(.horizontal)
+                            .padding(.horizontal, 24)
                     } else {
                         ForEach(accounts) { account in
                             let balance = calculateBalance(for: account)
@@ -140,27 +124,19 @@ struct DashboardView: View {
                         }
                     }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 20)
             }
         }
     }
     
-    // THE TRANSFER BALANCE CALCULATION UPGRADE
     private func calculateBalance(for account: Account) -> Double {
         let accountTxns = allTransactions.filter { $0.account == account || $0.destinationAccount == account }
-        
         return accountTxns.reduce(0.0) { total, txn in
-            if txn.type == "income" {
-                return total + txn.amount
-            } else if txn.type == "expense" {
-                return total - txn.amount
-            } else if txn.type == "transfer" {
-                if txn.account == account {
-                    return total - txn.amount
-                }
-                if txn.destinationAccount == account {
-                    return total + txn.amount
-                }
+            if txn.type == "income" { return total + txn.amount }
+            else if txn.type == "expense" { return total - txn.amount }
+            else if txn.type == "transfer" {
+                if txn.account == account { return total - txn.amount }
+                if txn.destinationAccount == account { return total + txn.amount }
             }
             return total
         }
@@ -170,7 +146,9 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Recent Activity")
                 .font(.headline)
-                .padding(.horizontal)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .padding(.horizontal, 24)
             
             VStack(spacing: 0) {
                 if allTransactions.isEmpty {
@@ -179,17 +157,17 @@ struct DashboardView: View {
                         .foregroundStyle(.tertiary)
                         .padding()
                 } else {
-                    ForEach(Array(allTransactions.prefix(3))) { transaction in
+                    ForEach(Array(allTransactions.prefix(5))) { transaction in
                         compactTransactionRow(transaction)
-                        if transaction != allTransactions.prefix(3).last {
+                        if transaction != allTransactions.prefix(5).last {
                             Divider().padding(.leading, 60)
                         }
                     }
                 }
             }
             .background(Color(uiColor: .secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .padding(.horizontal)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .padding(.horizontal, 20)
         }
     }
     
@@ -217,60 +195,120 @@ struct DashboardView: View {
                 .font(.subheadline.bold())
                 .foregroundStyle(isTransfer ? Color.primary : (isIncome ? Color.green : Color.primary))
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
         .padding(.horizontal, 16)
     }
 }
 
 // MARK: - Helper Views
-struct PacingCard: View {
+
+struct VerticalJarCard: View {
     let title: String
     let spent: Double
     let allocated: Double
     let bucket: String
     
     var progress: Double { allocated == 0 ? 0 : min(spent / allocated, 1.0) }
+    var percentage: Int { allocated == 0 ? 0 : Int((spent / allocated) * 100) }
     var isOverBudget: Bool { spent > allocated && allocated > 0 }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(title).font(.subheadline).fontWeight(.semibold).foregroundStyle(.secondary)
-                Spacer()
-                Image(systemName: bucket == "need" ? "house.fill" : (bucket == "want" ? "sparkles" : "leaf.fill")).font(.caption).foregroundStyle(Color.forBucket(bucket))
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(spent, format: .currency(code: "INR").locale(Locale(identifier: "en_US"))).font(.title3).fontWeight(.bold).foregroundStyle(isOverBudget ? Color.red : Color.primary)
-                Text("of \(allocated, format: .currency(code: "INR").locale(Locale(identifier: "en_US")))").font(.caption).foregroundStyle(.secondary)
-            }
+        VStack(spacing: 14) {
+            Text(title)
+                .font(.caption2)
+                .fontWeight(.bold)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            
             GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color(uiColor: .systemGray5))
-                    Capsule().fill(isOverBudget ? Color.red : Color.forBucket(bucket)).frame(width: geo.size.width * CGFloat(progress))
+                ZStack(alignment: .bottom) {
+                    Color(uiColor: .systemGray5).opacity(0.4)
+                    
+                    (isOverBudget ? Color.red : Color.forBucket(bucket))
+                        .frame(height: geo.size.height * CGFloat(progress))
                 }
+                // Perfectly clips the fill color to the capsule silhouette
+                .clipShape(Capsule())
             }
-            .frame(height: 6)
+            .frame(width: 44, height: 140)
+            
+            VStack(spacing: 4) {
+                Text("\(percentage)%")
+                    .font(.subheadline)
+                    .fontWeight(.bold)
+                    .foregroundStyle(isOverBudget ? Color.red : Color.primary)
+                
+                Text("\(Int(spent))/\(Int(allocated))")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+            }
         }
-        .padding(16)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .frame(maxWidth: .infinity)
     }
 }
 
+// Reverted to the older formatting structure
 struct WalletCard: View {
     let account: Account
     let balance: Double
     var isLiability: Bool { balance < 0 }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack { Image(systemName: "building.columns.fill").foregroundStyle(.secondary); Spacer() }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(account.name).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                Text(abs(balance), format: .currency(code: "INR").locale(Locale(identifier: "en_US"))).font(.headline).foregroundStyle(isLiability ? Color.red : Color.primary)
+        VStack(alignment: .leading, spacing: 0) {
+            
+            let isCredit = account.type == "credit_card"
+            
+            Image(systemName: isCredit ? "creditcard.fill" : "building.columns.fill")
+                .font(.title2)
+                .foregroundStyle(Color.gray.opacity(0.8))
+            
+            Spacer()
+            
+            // Reverted layout: Account Name & Optional Due Date above the Balance
+            HStack(alignment: .center, spacing: 6) {
+                Text(account.name.uppercased())
+                    .font(.subheadline)
+                    .foregroundStyle(.gray)
+                
+                // Displays the centered dot and superscripted due date if available
+                
+                if isCredit, let dueDate = account.dueDate {
+                    Text("•")
+                        .font(.caption)
+                        .foregroundStyle(.gray)
+                    
+                    // Uses nested string interpolation instead of the deprecated '+' operator
+                    Text("\(dueDate)\(Text(ordinalSuffix(for: dueDate)).font(.system(size: 9)).baselineOffset(4))")
+                        .font(.subheadline)
+                        .foregroundStyle(.gray)
+                }
             }
+            .padding(.bottom, 4)
+            
+            Text(abs(balance), format: .currency(code: "INR").locale(Locale(identifier: "en_US")))
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundStyle(isLiability ? Color.red : Color.primary)
+                .minimumScaleFactor(0.8)
         }
-        .padding(16).frame(width: 140).background(Color(uiColor: .secondarySystemGroupedBackground)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(16)
+        .frame(width: 140, height: 130)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+    
+    // Helper function to append TH, ST, ND, RD to the due date integer
+    private func ordinalSuffix(for number: Int) -> String {
+        let tens = (number / 10) % 10
+        if tens == 1 { return "TH" }
+        switch number % 10 {
+        case 1: return "ST"
+        case 2: return "ND"
+        case 3: return "RD"
+        default: return "TH"
+        }
     }
 }
 

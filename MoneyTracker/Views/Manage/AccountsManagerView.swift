@@ -25,15 +25,32 @@ struct AccountsManagerView: View {
             } else {
                 ForEach(accounts) { account in
                     HStack(spacing: 16) {
+                        let isCredit = account.type == "credit_card"
+                        
                         Image(systemName: icon(for: account.type))
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
+                            .font(.title2) // Slightly larger to match your reference image
+                            .foregroundStyle(.gray)
                             .frame(width: 32)
                         
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(account.name)
-                                .font(.body)
-                                .fontWeight(.medium)
+                            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                Text(account.name)
+                                    .font(.body)
+                                    .foregroundStyle(.primary)
+                                
+                                // NEW: Due Date UI for Credit Cards
+                                // NEW: Due Date UI for Credit Cards
+                                if isCredit, let dueDate = account.dueDate {
+                                    Text("•")
+                                        .font(.caption)
+                                        .foregroundStyle(.gray)
+                                    
+                                    // Uses nested string interpolation instead of the deprecated '+' operator
+                                    Text("\(dueDate)\(Text(ordinalSuffix(for: dueDate)).font(.system(size: 10)).baselineOffset(4))")
+                                        .font(.body)
+                                        .foregroundStyle(.gray)
+                                }
+                            }
                             
                             Text(account.type.replacingOccurrences(of: "_", with: " ").capitalized)
                                 .font(.caption)
@@ -79,6 +96,18 @@ struct AccountsManagerView: View {
         }
     }
     
+    // NEW: Helper for ordinal suffixes (st, nd, rd, th)
+    private func ordinalSuffix(for number: Int) -> String {
+        let tens = (number / 10) % 10
+        if tens == 1 { return "th" }
+        switch number % 10 {
+        case 1: return "st"
+        case 2: return "nd"
+        case 3: return "rd"
+        default: return "th"
+        }
+    }
+    
     // Soft Delete Logic
     private func archiveAccount(_ account: Account) {
         account.isActive = false
@@ -93,7 +122,10 @@ struct AddAccountSheet: View {
     
     @State private var name: String = ""
     @State private var type: String = "bank"
-    @State private var startingBalance: String = "" // NEW: The balance state
+    @State private var startingBalance: String = ""
+    
+    // NEW: State for the Due Date
+    @State private var dueDate: Int = 5
     
     let accountTypes = [
         ("bank", "Bank Account"),
@@ -119,7 +151,17 @@ struct AddAccountSheet: View {
                     }
                 }
                 
-                // NEW: Dynamic Balance Input
+                // NEW: Dynamic Due Date Picker (Only shows for Credit Cards)
+                if type == "credit_card" {
+                    Section(footer: Text("The date your bill is due each month.")) {
+                        Picker("Due Date", selection: $dueDate) {
+                            ForEach(1...31, id: \.self) { day in
+                                Text("\(day)").tag(day)
+                            }
+                        }
+                    }
+                }
+                
                 Section(header: Text("Initial State")) {
                     TextField(type == "credit_card" ? "Current Deficit (₹ 0)" : "Current Balance (₹ 0)", text: $startingBalance)
                         .keyboardType(.decimalPad)
@@ -141,16 +183,23 @@ struct AddAccountSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large]) // Added .large so the extra picker doesn't cramp the form
     }
     
     private func saveAccount() {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let newAccount = Account(name: cleanName, type: type)
+        
+        // NEW: Pass the dueDate into the model if it's a credit card
+        let newAccount = Account(
+            name: cleanName,
+            type: type,
+            isActive: true,
+            dueDate: (type == "credit_card") ? dueDate : nil
+        )
         
         modelContext.insert(newAccount)
         
-        // NEW: Inject the Starting Balance as a Ledger Transaction
+        // Inject the Starting Balance as a Ledger Transaction
         if let balance = Double(startingBalance), balance > 0 {
             // Credit cards are negative net worth (expense), banks are positive (income)
             let transactionType = (type == "credit_card") ? "expense" : "income"
@@ -163,7 +212,6 @@ struct AddAccountSheet: View {
                 isAutoGenerated: true,
                 account: newAccount,
                 category: nil // Leaves category blank so it doesn't skew your Analytics Donut Chart
-                
             )
             modelContext.insert(initialTransaction)
         }
