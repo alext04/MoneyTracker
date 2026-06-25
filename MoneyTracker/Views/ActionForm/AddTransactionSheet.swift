@@ -10,133 +10,136 @@ struct AddTransactionSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
-    // Live database queries for the dropdowns
     @Query(filter: #Predicate<Account> { $0.isActive }, sort: \Account.name) private var accounts: [Account]
-    @Query(filter: #Predicate<Category> { $0.isActive }, sort: \Category.name) private var categories: [Category]
+    @Query(sort: \Category.name) private var categories: [Category]
     
-    // Strict 6-Field State
     @State private var amountString: String = ""
-    @State private var selectedAccount: Account? = nil
-    @State private var masterBucket: String = "need"
-    @State private var selectedCategory: Category? = nil
-    @State private var transactionName: String = ""
-    @State private var date: Date = .now
+    @State private var name: String = ""
+    @State private var type: String = "expense"
+    @State private var date: Date = Date()
+    @State private var note: String = ""
     
-    let buckets = ["need", "want", "saving", "transfer", "income"]
-    
-    // Dynamic Filter: Only shows categories matching the selected Master Bucket
-    var filteredCategories: [Category] {
-        categories.filter { $0.masterBucket == masterBucket }
-    }
-    
-    // The "No Default" Validation Logic
-    var isFormValid: Bool {
-        guard let amount = Double(amountString), amount > 0 else { return false }
-        if selectedAccount == nil { return false }
-        if selectedCategory == nil { return false }
-        if transactionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
-        return true
-    }
+    @State private var selectedAccount: Account?
+    @State private var selectedDestinationAccount: Account? // For transfers
+    @State private var selectedCategory: Category?
     
     var body: some View {
         NavigationStack {
             Form {
-                // 1. The Impact Layer (Massive Typography)
+                // 1. Transaction Type & Amount
                 Section {
-                    TextField("₹ 0", text: $amountString)
-                        .font(.system(size: 56, weight: .bold, design: .rounded))
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.center)
-                        .padding(.vertical, 12)
-                }
-                .listRowBackground(Color.clear) // Blends into the grouped background
-                
-                // 2. The Context Layer
-                Section {
-                    Picker("Account", selection: $selectedAccount) {
-                        Text("Select Wallet").tag(Account?.none) // Enforces intentional choice
-                        ForEach(accounts) { account in
-                            Text(account.name).tag(Account?.some(account))
-                        }
-                    }
-                    
-                    Picker("Bucket", selection: $masterBucket) {
-                        ForEach(buckets, id: \.self) { bucket in
-                            Text(bucket.capitalized).tag(bucket)
-                        }
+                    Picker("Type", selection: $type) {
+                        Text("Expense").tag("expense")
+                        Text("Income").tag("income")
+                        Text("Transfer").tag("transfer")
                     }
                     .pickerStyle(.segmented)
-                    .onChange(of: masterBucket) { oldValue, newValue in
-                        // Reset category if bucket changes to prevent mismatched data
-                        selectedCategory = nil
-                    }
+                    .padding(.vertical, 8)
+                    // Reset fields when changing type
+                    .onChange(of: type) { _, _ in selectedCategory = nil }
                     
-                    Picker("Category", selection: $selectedCategory) {
-                        Text("Select Category").tag(Category?.none)
-                        ForEach(filteredCategories) { category in
-                            Label(category.name, systemImage: category.iconName)
-                                .tag(Category?.some(category))
+                    TextField("Amount (₹)", text: $amountString)
+                        .keyboardType(.decimalPad)
+                        .font(.largeTitle.bold())
+                        .foregroundStyle(type == "income" ? Color.green : (type == "expense" ? Color.primary : Color.accentColor))
+                }
+                
+                // 2. Details
+                Section {
+                    TextField("Title (e.g., Coffee, Salary)", text: $name)
+                    DatePicker("Date", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                }
+                
+                // 3. Accounts & Categories
+                Section {
+                    if type == "transfer" {
+                        // THE TRANSFER UPGRADE
+                        Picker("From Account", selection: $selectedAccount) {
+                            Text("Select source...").tag(Account?.none)
+                            ForEach(accounts) { account in
+                                Text(account.name).tag(account as Account?)
+                            }
+                        }
+                        Picker("To Account", selection: $selectedDestinationAccount) {
+                            Text("Select destination...").tag(Account?.none)
+                            ForEach(accounts) { account in
+                                Text(account.name).tag(account as Account?)
+                            }
+                        }
+                    } else {
+                        Picker("Account", selection: $selectedAccount) {
+                            Text("Select account...").tag(Account?.none)
+                            ForEach(accounts) { account in
+                                Text(account.name).tag(account as Account?)
+                            }
+                        }
+                        
+                        // THE REFUND UI UPGRADE
+                        Picker("Category", selection: $selectedCategory) {
+                            Text("Select category...").tag(Category?.none)
+                            
+                            if type == "income" {
+                                Section("Income Sources") {
+                                    ForEach(categories.filter { $0.masterBucket != "need" && $0.masterBucket != "want" && $0.masterBucket != "saving" }) { cat in
+                                        Text(cat.name).tag(cat as Category?)
+                                    }
+                                }
+                                Section("Refunds / Reimbursements") {
+                                    ForEach(categories.filter { $0.masterBucket == "need" || $0.masterBucket == "want" || $0.masterBucket == "saving" }) { cat in
+                                        Text("Refund: \(cat.name)").tag(cat as Category?)
+                                    }
+                                }
+                            } else {
+                                Section("Needs") {
+                                    ForEach(categories.filter { $0.masterBucket == "need" }) { cat in Text(cat.name).tag(cat as Category?) }
+                                }
+                                Section("Wants") {
+                                    ForEach(categories.filter { $0.masterBucket == "want" }) { cat in Text(cat.name).tag(cat as Category?) }
+                                }
+                                Section("Savings") {
+                                    ForEach(categories.filter { $0.masterBucket == "saving" }) { cat in Text(cat.name).tag(cat as Category?) }
+                                }
+                            }
                         }
                     }
                 }
                 
-                // 3. The Detail Layer
-                Section {
-                    TextField("Merchant or Description", text: $transactionName)
-                        .textInputAutocapitalization(.words)
-                    
-                    DatePicker("Date", selection: $date, displayedComponents: [.date, .hourAndMinute])
-                        .tint(Color.primary)
+                Section("Optional") {
+                    TextField("Notes", text: $note, axis: .vertical)
+                        .lineLimit(3...6)
                 }
             }
-            .navigationTitle("New Entry")
+            .navigationTitle(type == "transfer" ? "New Transfer" : (type == "income" ? "New Income" : "New Expense"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
-                        .tint(.primary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { saveTransaction() }
-                        .fontWeight(.bold)
-                        .disabled(!isFormValid)
+                        .disabled(amountString.isEmpty || name.isEmpty || selectedAccount == nil || (type == "transfer" && selectedDestinationAccount == nil))
                 }
             }
         }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
     }
     
-    // MARK: - Database Write Action
     private func saveTransaction() {
-        guard let amount = Double(amountString),
-              let account = selectedAccount,
-              let category = selectedCategory else { return }
-        
-        // Tactile Haptic Feedback
-        let impactMed = UIImpactFeedbackGenerator(style: .medium)
-        impactMed.impactOccurred()
-        
-        // Define transaction type based on bucket
-        let type: String
-        if masterBucket == "income" {
-            type = "income"
-        } else if masterBucket == "transfer" {
-            type = "transfer"
-        } else {
-            type = "expense"
-        }
-        
+        let amount = Double(amountString) ?? 0.0
         let newTransaction = Transaction(
             amount: amount,
-            name: transactionName.trimmingCharacters(in: .whitespacesAndNewlines),
-            timestamp: date,
+            name: name,
             type: type,
-            account: account,
-            category: category
+            timestamp: date,
+            account: selectedAccount,
+            destinationAccount: type == "transfer" ? selectedDestinationAccount : nil,
+            category: type == "transfer" ? nil : selectedCategory,
+            note: note.isEmpty ? nil : note
         )
         
         modelContext.insert(newTransaction)
+        
+        let impact = UIImpactFeedbackGenerator(style: .medium)
+        impact.impactOccurred()
         dismiss()
     }
 }
