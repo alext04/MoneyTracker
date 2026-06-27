@@ -1,16 +1,3 @@
-//
-//  RecurringAutomationsView.swift
-//  MoneyTracker
-//
-//  Created by Alex Thuruthel on 23/06/26.
-//
-
-
-//
-//  RecurringAutomationsView.swift
-//  MoneyTracker
-//
-
 import SwiftUI
 import SwiftData
 
@@ -22,79 +9,100 @@ struct RecurringAutomationsView: View {
     
     @State private var showingAddSheet = false
     
+    // Computed property to calculate the total monthly automated payments
+    private var totalActivePayments: Double {
+        templates
+            .filter { $0.isActive && $0.type == "expense" }
+            .reduce(0) { $0 + $1.amount }
+    }
+    
     var body: some View {
         List {
-            if templates.isEmpty {
-                ContentUnavailableView(
-                    "No Automations",
-                    systemImage: "arrow.2.squarepath",
-                    description: Text("Set up recurring templates for rent, subscriptions, or SIPs to automate your ledger.")
-                )
-            } else {
-                ForEach(templates) { template in
-                    HStack(spacing: 16) {
-                        // Category Emoji or Default Tag
-                        Image(systemName: template.category?.iconName ?? "arrow.2.squarepath")
-                            .font(.title2)
+            // MARK: - Hero Metric Section
+            if !templates.isEmpty {
+                Section {
+                    VStack(spacing: 8) {
+                        Text("Active Monthly Payments")
+                            .font(.caption)
+                            .fontWeight(.bold)
                             .foregroundStyle(.secondary)
-                            .frame(width: 32)
+                            .textCase(.uppercase)
+                            .tracking(1.2)
                         
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(template.name)
-                                .font(.body)
-                                .fontWeight(.medium)
+                        Text("₹\(totalActivePayments.formatted())")
+                            .font(.system(size: 42, weight: .bold, design: .rounded))
+                            .foregroundStyle(.primary)
+                            .contentTransition(.numericText()) // Smooth animation when toggling items
+                    }
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
+                    .padding(.vertical, 16)
+                }
+            }
+            
+            // MARK: - Automations List Section
+            Section {
+                if templates.isEmpty {
+                    ContentUnavailableView(
+                        "No Automations",
+                        systemImage: "arrow.2.squarepath",
+                        description: Text("Set up recurring templates for rent, subscriptions, or SIPs to automate your ledger.")
+                    )
+                    .listRowBackground(Color.clear)
+                } else {
+                    ForEach(templates) { template in
+                        @Bindable var bindableTemplate = template
+                        
+                        HStack(spacing: 16) {
+                            // Category Emoji or Default Tag
+                            Image(systemName: template.category?.iconName ?? "arrow.2.squarepath")
+                                .font(.title2)
+                                .foregroundStyle(template.isActive ? Color.primary : Color.secondary)
+                                .frame(width: 32)
                             
-                            Text("Day \(template.executionDay) • \(template.account?.name ?? "No Wallet")")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(template.name)
+                                    .font(.body)
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(template.isActive ? Color.primary : Color.secondary)
+                                
+                                Text("Day \(template.executionDay) • \(template.account?.name ?? "No Wallet")")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            VStack(alignment: .trailing, spacing: 4) {
+                                let isPositive = template.type == "income"
+                                Text(isPositive ? "+₹\(template.amount.formatted())" : "-₹\(template.amount.formatted())")
+                                    .font(.system(.body, design: .rounded, weight: .semibold))
+                                    // Fixed ternary type mismatch by enforcing Color types
+                                    .foregroundStyle(template.isActive ? (isPositive ? Color.green : Color.primary) : Color.secondary)
+                            }
+                            
+                            // Native iOS Toggle for pausing/resuming
+                            Toggle("Active", isOn: $bindableTemplate.isActive)
+                                .labelsHidden()
+                                .tint(.green)
                         }
-                        
-                        Spacer()
-                        
-                        VStack(alignment: .trailing, spacing: 4) {
-                            let isPositive = template.type == "income"
-                            Text(isPositive ? "+₹\(template.amount.formatted())" : "-₹\(template.amount.formatted())")
-                                .font(.system(.body, design: .rounded, weight: .semibold))
-                                .foregroundStyle(isPositive ? .green : .primary)
-                            
-                            // Visual indicator if paused
-                            if !template.isActive {
-                                Text("Paused")
-                                    .font(.caption2)
-                                    .fontWeight(.bold)
-                                    .foregroundStyle(.red)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.red.opacity(0.1))
-                                    .cornerRadius(4)
+                        .padding(.vertical, 6)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                withAnimation {
+                                    modelContext.delete(template)
+                                    try? modelContext.save()
+                                }
+                            } label: {
+                                Label("Delete", systemImage: "trash.fill")
                             }
                         }
-                    }
-                    .padding(.vertical, 4)
-                    .opacity(template.isActive ? 1.0 : 0.5) // Dim paused automations
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        // Hard Delete
-                        Button(role: .destructive) {
-                            modelContext.delete(template)
-                            try? modelContext.save()
-                        } label: {
-                            Label("Delete", systemImage: "trash.fill")
-                        }
-                        
-                        // Toggle Pause/Resume State
-                        Button {
-                            template.isActive.toggle()
-                            try? modelContext.save()
-                            UISelectionFeedbackGenerator().selectionChanged()
-                        } label: {
-                            Label(template.isActive ? "Pause" : "Resume", 
-                                  systemImage: template.isActive ? "pause.fill" : "play.fill")
-                        }
-                        .tint(template.isActive ? .orange : .gray)
                     }
                 }
             }
         }
+        .animation(.default, value: totalActivePayments)
         .navigationTitle("Recurring Automations")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -221,9 +229,4 @@ struct AddRecurringTemplateSheet: View {
         
         dismiss()
     }
-}
-
-#Preview {
-    RecurringAutomationsView()
-        .modelContainer(for: [Account.self, Category.self, Transaction.self, RecurringTemplate.self], inMemory: true)
 }

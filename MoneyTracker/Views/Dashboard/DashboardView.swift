@@ -52,50 +52,40 @@ struct DashboardView: View {
         spentNeeds + spentWants + actualSavings
     }
     
+    // Generates the native Large Title string (e.g., "JUNE 2026")
+    private var currentMonthYearString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: Date()).uppercased()
+    }
+    
     var body: some View {
-            NavigationStack {
-                VStack(spacing: 0) {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 32) {
                     
-                    // 1. STICKY HEADER: Moved outside the ScrollView so it never moves
-                    headerSection
-                        .padding(.bottom, 16) // Adds a little breathing room before the scrollable content starts
-                    
-                    // 2. SCROLLABLE CONTENT: Everything else scrolls beneath the header
-                    ScrollView(showsIndicators: false) {
-                        VStack(spacing: 32) {
-                            jarPacingSection
-                            liquiditySection
-                            recentTransactionsSection
-                        }
-                        .padding(.bottom, 32) // Pads the bottom so content isn't cut off by the tab bar
+                    // The Hero Amount sits right under the Large Title natively
+                    HStack {
+                        Text(floor(totalSpend), format: .currency(code: "INR").precision(.fractionLength(0)).locale(Locale(identifier: "en_US")))
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
+                            .foregroundStyle(.primary)
+                        Spacer()
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.top, -8) // Pulls it slightly closer to the title to bridge the gap
+                    
+                    jarPacingSection
+                    liquiditySection
+                    recentTransactionsSection
                 }
-                .navigationBarHidden(true)
-                .background(Color(uiColor: .systemGroupedBackground))
+                .padding(.bottom, 32)
             }
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle(currentMonthYearString)
         }
+    }
     
     // MARK: - UI Components
-    
-    private var headerSection: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(Date(), format: .dateTime.month(.wide).year())
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .foregroundStyle(.primary)
-                    .textCase(.uppercase)
-                
-                // Removed subtitle and stripped decimals for minimal aesthetic
-                Text(floor(totalSpend), format: .currency(code: "INR").precision(.fractionLength(0)).locale(Locale(identifier: "en_US")))
-                    .font(.system(size: 44, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
-    }
     
     private var jarPacingSection: some View {
         HStack(spacing: 16) {
@@ -234,7 +224,6 @@ struct VerticalJarCard: View {
                     (isOverBudget ? Color.red : Color.forBucket(bucket))
                         .frame(height: geo.size.height * CGFloat(progress))
                 }
-                // Perfectly clips the fill color to the capsule silhouette
                 .clipShape(Capsule())
             }
             .frame(width: 44, height: 140)
@@ -256,7 +245,6 @@ struct VerticalJarCard: View {
     }
 }
 
-// Reverted to the older formatting structure
 struct WalletCard: View {
     let account: Account
     let balance: Double
@@ -273,20 +261,16 @@ struct WalletCard: View {
             
             Spacer()
             
-            // Reverted layout: Account Name & Optional Due Date above the Balance
             HStack(alignment: .center, spacing: 6) {
                 Text(account.name.uppercased())
                     .font(.subheadline)
                     .foregroundStyle(.gray)
-                
-                // Displays the centered dot and superscripted due date if available
                 
                 if isCredit, let dueDate = account.dueDate {
                     Text("•")
                         .font(.caption)
                         .foregroundStyle(.gray)
                     
-                    // Uses nested string interpolation instead of the deprecated '+' operator
                     Text("\(dueDate)\(Text(ordinalSuffix(for: dueDate)).font(.system(size: 9)).baselineOffset(4))")
                         .font(.subheadline)
                         .foregroundStyle(.gray)
@@ -306,7 +290,6 @@ struct WalletCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
     
-    // Helper function to append TH, ST, ND, RD to the due date integer
     private func ordinalSuffix(for number: Int) -> String {
         let tens = (number / 10) % 10
         if tens == 1 { return "TH" }
